@@ -7,6 +7,12 @@
     "btts": true,
     "over25": true,
     "confidence": 87,
-    "reason": "Arsenal u odličnoj formi, dominantni na Emiratesu, Spursi imaju problema u defanzivi i rotiraju ključne igrače."
+    "reason": "Arsenal u odličnoj formi, dominantni na Emiratesu, Spursi imaju problema u defanzivi i rotiraju ključne igrače.",
+    "odds": {
+      "home": 1.68,
+      "draw": 3.9,
+      "away": 4.4
+    },
+    "updatedAt": "2024-05-01T11:30:00Z"
   }
 ]
