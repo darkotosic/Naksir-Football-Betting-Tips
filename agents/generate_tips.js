@@ -199,10 +199,24 @@ async function main() {
       });
     }
 
-    const sortedPredictions = predictions.filter(Boolean).sort((a, b) => b.confidence - a.confidence);
+    const normalizedPredictions = predictions.filter(Boolean).map((p) => ({
+      fixtureId: p.fixtureId ?? 'unknown-fixture',
+      leagueId: p.leagueId ?? null,
+      league: p.league ?? 'Unknown league',
+      country: p.country ?? 'Unknown country',
+      homeTeam: p.homeTeam ?? 'Unknown home team',
+      awayTeam: p.awayTeam ?? 'Unknown away team',
+      market: p.market ?? 'UNKNOWN',
+      odd: p.odd ?? null,
+      confidence: typeof p.confidence === 'number' ? p.confidence : 0,
+      reasoning: p.reasoning ?? '',
+      generatedAt: p.generatedAt ?? new Date().toISOString(),
+    }));
 
-    await fs.writeFile(OUTPUT_PATH, JSON.stringify(sortedPredictions, null, 2), 'utf-8');
-    console.log(`Saved ${sortedPredictions.length} predictions to ${OUTPUT_PATH}`);
+    normalizedPredictions.sort((a, b) => b.confidence - a.confidence);
+
+    await fs.writeFile(OUTPUT_PATH, JSON.stringify(normalizedPredictions, null, 2), 'utf-8');
+    console.log(`Saved ${normalizedPredictions.length} predictions to ${OUTPUT_PATH}`);
   } catch (error) {
     console.error('Failed to generate predictions:', error.message);
     process.exit(1);
