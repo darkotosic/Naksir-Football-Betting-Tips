@@ -197,19 +197,22 @@ async function main() {
   await ensureCacheDir();
 
   try {
-    const allMatches = [];
+    let allMatches = [];
 
     for (let offset = 0; offset <= DAYS_AHEAD; offset += 1) {
       const date = getDateYYYYMMDD(offset);
       console.log(`Processing date: ${date}`);
       const fixtures = await fetchFixturesForDate(date);
       const oddsMap = await fetchOddsForDate(date);
-      const merged = mergeFixturesAndOdds(fixtures, oddsMap)
-        .filter(isValidFixture)
-        .filter(oddsWithinRange);
+      const merged = mergeFixturesAndOdds(fixtures, oddsMap);
 
       allMatches.push(...merged);
     }
+
+    const totalFixtures = allMatches.length;
+    allMatches = allMatches.filter(isValidFixture);
+    console.log(`Total fixtures fetched: ${totalFixtures}`);
+    console.log(`Fixtures after validation: ${allMatches.length}`);
 
     await fs.writeFile(MATCHES_OUTPUT, JSON.stringify(allMatches, null, 2), 'utf-8');
     console.log(`Saved ${allMatches.length} fixtures to ${MATCHES_OUTPUT}`);
