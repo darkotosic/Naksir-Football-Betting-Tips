@@ -1,0 +1,8 @@
+{
+  "name": "naksir-football-betting-tips",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "validate": "node scripts/validate_predictions.js"
+  }
+}
