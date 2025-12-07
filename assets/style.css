@@ -130,6 +130,13 @@ button:active {
   gap: 8px;
 }
 
+.card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .matchup {
   font-weight: 800;
   font-size: 18px;
@@ -151,6 +158,11 @@ button:active {
   font-weight: 700;
   font-size: 13px;
   width: fit-content;
+}
+
+.badge--muted {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
 }
 
 .predictions {
@@ -175,6 +187,40 @@ button:active {
   font-size: 13px;
 }
 
+.odds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.odds-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 8px;
+}
+
+.odds-pill {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.odds-pill .value {
+  font-weight: 800;
+}
+
 .reason {
   background: rgba(255, 255, 255, 0.02);
   border: 1px dashed rgba(255, 255, 255, 0.07);
@@ -195,4 +241,35 @@ button:active {
   text-align: center;
   padding: 48px 0;
   color: var(--muted);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  box-shadow: none;
+  margin-top: 8px;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 16px;
+  }
+
+  .card__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .predictions {
+    grid-template-columns: 1fr;
+  }
+
+  .odds-table {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
 }
