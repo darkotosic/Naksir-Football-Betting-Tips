@@ -3,7 +3,12 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
-const OUTPUT_PATH = path.join(__dirname, '..', 'data', 'matches.json');
+const DAYS_AHEAD = 2; // danas + 2 dana unapred
+const ALLOWED_LEAGUES = [39, 140, 135, 3, 14, 2, 848, 38, 78, 79, 61, 62, 218, 88, 89, 203, 40, 119, 136, 736, 207];
+const MIN_ODD = 1.1;
+const MAX_ODD = 1.45;
+const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache');
+const MATCHES_OUTPUT = path.join(__dirname, '..', 'data', 'matches.json');
 
 if (!API_KEY) {
   console.error('Missing API_FOOTBALL_KEY environment variable.');
@@ -45,94 +50,169 @@ async function withRetry(fn, { retries = 2, baseDelay = 500 } = {}) {
   throw lastError;
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function getDateYYYYMMDD(offsetDays = 0) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
 }
 
-function isMajorLeague(league) {
-  if (!league) return false;
-  const majorTypes = new Set(['League', 'Cup']);
-  const excludedCountries = new Set(['World', 'International']);
-  return majorTypes.has(league.type) && !excludedCountries.has(league.country);
+async function ensureCacheDir() {
+  await fs.mkdir(CACHE_DIR, { recursive: true });
 }
 
-function mapFixture(fixture) {
+function parseNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeFixture(raw) {
   return {
-    fixtureId: fixture.fixture.id,
-    date: fixture.fixture.date,
-    status: fixture.fixture.status?.short || null,
-    leagueId: fixture.league.id,
-    league: fixture.league.name,
-    country: fixture.league.country,
-    homeTeam: fixture.teams.home.name,
-    awayTeam: fixture.teams.away.name,
-    odds: null,
+    fixtureId: raw.fixture.id,
+    leagueId: raw.league.id,
+    league: raw.league.name,
+    country: raw.league.country,
+    status: raw.fixture.status?.short || null,
+    date: raw.fixture.date,
+    timestamp: raw.fixture.timestamp,
+    homeTeam: raw.teams.home.name,
+    awayTeam: raw.teams.away.name,
+    goalsHome: parseNumber(raw.goals?.home),
+    goalsAway: parseNumber(raw.goals?.away),
   };
 }
 
-function extractMatchOdds(oddsResponse) {
-  const bookmaker = oddsResponse?.bookmakers?.[0];
-  const matchWinnerBet = bookmaker?.bets?.find((bet) => bet.name === 'Match Winner');
-  const values = matchWinnerBet?.values || [];
-  const odds = values.reduce(
-    (acc, value) => {
-      if (value.value === 'Home') acc.home = Number(value.odd) || null;
-      if (value.value === 'Draw') acc.draw = Number(value.odd) || null;
-      if (value.value === 'Away') acc.away = Number(value.odd) || null;
-      return acc;
-    },
-    { home: null, draw: null, away: null }
-  );
-  if (!odds.home && !odds.draw && !odds.away) return null;
-  return odds;
+function parseMatchWinner(bets) {
+  const bet = bets.find((b) => b.name === 'Match Winner');
+  const matchWinner = {
+    home: parseNumber(bet?.values?.find((v) => v.value === 'Home')?.odd),
+    draw: parseNumber(bet?.values?.find((v) => v.value === 'Draw')?.odd),
+    away: parseNumber(bet?.values?.find((v) => v.value === 'Away')?.odd),
+  };
+
+  if (!matchWinner.home && !matchWinner.draw && !matchWinner.away) return null;
+  return matchWinner;
 }
 
-async function fetchFixtures(date) {
+function parseOverUnder(bets, label, line) {
+  const bet = bets.find((b) => b.name === 'Over/Under');
+  const home = parseNumber(bet?.values?.find((v) => v.value === label)?.odd);
+  if (!home) return null;
+  return { home, line };
+}
+
+function parseBTTS(bets) {
+  const bet = bets.find((b) => b.name === 'Both Teams To Score');
+  const yes = parseNumber(bet?.values?.find((v) => v.value === 'Yes')?.odd);
+  const no = parseNumber(bet?.values?.find((v) => v.value === 'No')?.odd);
+  if (!yes && !no) return null;
+  return { yes, no };
+}
+
+function normalizeOddsEntry(entry) {
+  const bookmaker = entry?.bookmakers?.[0];
+  const bets = bookmaker?.bets || [];
+
+  const matchWinner = parseMatchWinner(bets);
+  const over15 = parseOverUnder(bets, 'Over 1.5', 1.5);
+  const over25 = parseOverUnder(bets, 'Over 2.5', 2.5);
+  const btts = parseBTTS(bets);
+
+  if (!matchWinner && !over15 && !over25 && !btts) return null;
+  return { matchWinner, over15, over25, btts };
+}
+
+async function fetchFixturesForDate(date) {
   const { data } = await withRetry(() =>
     client.get('/fixtures', {
       params: {
         date,
-        timezone: 'UTC',
+        timezone: 'Europe/Belgrade',
       },
     })
   );
-  return data?.response || [];
+
+  await fs.writeFile(path.join(CACHE_DIR, `fixtures-${date}.raw.json`), JSON.stringify(data, null, 2), 'utf-8');
+  const fixtures = data?.response || [];
+  return fixtures
+    .filter((item) => ALLOWED_LEAGUES.includes(item.league?.id))
+    .map(normalizeFixture);
 }
 
-async function fetchOddsForFixture(fixtureId) {
+async function fetchOddsForDate(date) {
   const { data } = await withRetry(() =>
     client.get('/odds', {
-      params: { fixture: fixtureId },
+      params: {
+        date,
+        timezone: 'Europe/Belgrade',
+      },
     })
   );
-  return data?.response?.[0] || null;
+
+  await fs.writeFile(path.join(CACHE_DIR, `odds-${date}.raw.json`), JSON.stringify(data, null, 2), 'utf-8');
+
+  const oddsMap = new Map();
+  const oddsResponse = data?.response || [];
+
+  oddsResponse.forEach((entry) => {
+    const fixtureId = entry.fixture?.id;
+    if (!fixtureId) return;
+    const normalized = normalizeOddsEntry(entry);
+    if (normalized) {
+      oddsMap.set(String(fixtureId), normalized);
+    }
+  });
+
+  return oddsMap;
+}
+
+function mergeFixturesAndOdds(fixtures, oddsMap) {
+  return fixtures
+    .map((f) => {
+      const odds = oddsMap.get ? oddsMap.get(String(f.fixtureId)) : oddsMap[f.fixtureId];
+      return { ...f, odds: odds || null };
+    })
+    .filter((f) => f.odds);
+}
+
+function isValidFixture(match) {
+  if (!match.fixtureId || !match.leagueId) return false;
+  if (!match.homeTeam || !match.awayTeam) return false;
+  if (!match.date || !match.timestamp) return false;
+  return true;
+}
+
+function oddsWithinRange(match) {
+  const { odds } = match;
+  const values = odds?.matchWinner
+    ? [odds.matchWinner.home, odds.matchWinner.draw, odds.matchWinner.away]
+        .filter((value) => typeof value === 'number')
+    : [];
+
+  if (!values.length) return false;
+  return values.some((value) => value >= MIN_ODD && value <= MAX_ODD);
 }
 
 async function main() {
-  console.log('Fetching fixtures for', today());
+  console.log('Fetching fixtures and odds');
+  await ensureCacheDir();
+
   try {
-    const fixtures = await fetchFixtures(today());
-    const filtered = fixtures.filter((fixture) => isMajorLeague(fixture.league));
-    const mapped = filtered.map(mapFixture);
+    const allMatches = [];
 
-    const withOdds = await Promise.all(
-      mapped.map(async (match) => {
-        try {
-          const oddsResponse = await fetchOddsForFixture(match.fixtureId);
-          const odds = extractMatchOdds(oddsResponse);
-          if (!odds) {
-            console.warn(`No odds found for fixture ${match.fixtureId}. Keeping odds as null.`);
-          }
-          return { ...match, odds };
-        } catch (error) {
-          console.warn(`Odds fetch failed for fixture ${match.fixtureId}:`, error.message);
-          return match;
-        }
-      })
-    );
+    for (let offset = 0; offset <= DAYS_AHEAD; offset += 1) {
+      const date = getDateYYYYMMDD(offset);
+      console.log(`Processing date: ${date}`);
+      const fixtures = await fetchFixturesForDate(date);
+      const oddsMap = await fetchOddsForDate(date);
+      const merged = mergeFixturesAndOdds(fixtures, oddsMap)
+        .filter(isValidFixture)
+        .filter(oddsWithinRange);
 
-    await fs.writeFile(OUTPUT_PATH, JSON.stringify(withOdds, null, 2), 'utf-8');
-    console.log(`Saved ${withOdds.length} fixtures to ${OUTPUT_PATH}`);
+      allMatches.push(...merged);
+    }
+
+    await fs.writeFile(MATCHES_OUTPUT, JSON.stringify(allMatches, null, 2), 'utf-8');
+    console.log(`Saved ${allMatches.length} fixtures to ${MATCHES_OUTPUT}`);
   } catch (error) {
     console.error('Failed to fetch fixtures or odds:', error.message);
     process.exit(1);
