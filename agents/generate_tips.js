@@ -14,6 +14,41 @@ if (!API_KEY) {
 
 const openai = new OpenAI({ apiKey: API_KEY });
 
+function buildPromptForMarket(candidate, market) {
+  return `
+
+
+Ti si Naksir AI analitičar za fudbalske utakmice.
+
+Utakmica:
+
+Liga: ${candidate.league} (${candidate.country})
+
+Timovi: ${candidate.homeTeam} vs ${candidate.awayTeam}
+
+Vreme početka: ${candidate.kickOff}
+
+Tržište:
+
+Tip: ${market.type}
+
+Kvota: ${market.odd}
+
+Interni score modela: ${market.score} / 100
+
+Zadatak:
+
+Vrati konačnu preporuku (SAMO za ovo tržište) u JSON formatu:
+{
+"pick": "OVER_1_5" | "BTTS_YES" | "SKIP",
+"confidence": broj 0-100,
+"reasoning": "kratko objašnjenje na srpskom"
+}
+
+Nemoj pisati ništa van JSON objekta.
+`;
+}
+
 function scoreOver15Candidate(match) {
   const o = match.odds?.over15;
   if (!o || !o.home) return null;
@@ -78,80 +113,53 @@ async function loadMatches() {
   return data;
 }
 
-function isValidOdds(match) {
-  const odds = match?.odds;
-  if (!odds) return false;
+async function processMarketJob(job) {
+  const prompt = buildPromptForMarket(job.candidate, job.market);
 
-  const values = ['home', 'draw', 'away'];
-  return values.every((key) => {
-    const value = odds[key];
-    return typeof value === 'number' && Number.isFinite(value);
-  });
-}
-
-function buildPrompt(match) {
-  const homeOdd = match.odds?.home ?? 'N/A';
-  const drawOdd = match.odds?.draw ?? 'N/A';
-  const awayOdd = match.odds?.away ?? 'N/A';
-  return [
-    `Match: ${match.homeTeam} vs ${match.awayTeam}`,
-    `Odds: ${homeOdd} - ${drawOdd} - ${awayOdd}`,
-    'Will both teams score? Over 2.5 goals? Respond with JSON only:',
-    '{"outcome": "HomeWin|Draw|AwayWin", "btts": true, "over25": true, "confidence": 84, "reason": "..."}',
-  ].join('\n');
-}
-
-function buildDefaultPrediction(match, reason) {
-  return {
-    homeTeam: match.homeTeam,
-    awayTeam: match.awayTeam,
-    date: match.date,
-    odds: match.odds,
-    outcome: 'Unknown',
-    btts: false,
-    over25: false,
-    confidence: 0,
-    reason,
-  };
-}
-
-async function generatePrediction(match) {
-  const prompt = buildPrompt(match);
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    temperature: 0.6,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a concise football betting analyst. Return JSON only, no prose.',
-      },
-      { role: 'user', content: prompt },
-    ],
-  });
-
-  const content = completion.choices?.[0]?.message?.content?.trim();
+  let responseText = '';
   try {
-    if (!content) {
-      return buildDefaultPrediction(match, 'Model response was empty.');
-    }
-    const parsed = JSON.parse(content);
-    return {
-      homeTeam: match.homeTeam,
-      awayTeam: match.awayTeam,
-      date: match.date,
-      odds: match.odds,
-      outcome: parsed.outcome,
-      btts: parsed.btts,
-      over25: parsed.over25,
-      confidence: parsed.confidence,
-      reason: parsed.reason,
-    };
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a concise football betting analyst. Return JSON only, no prose.',
+        },
+        { role: 'user', content: prompt },
+      ],
+    });
+    responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
   } catch (error) {
-    console.warn(
-      `Could not parse model response for ${match.homeTeam} vs ${match.awayTeam}: ${error.message}. Content: ${content}`
-    );
-    return buildDefaultPrediction(match, 'Model response could not be parsed.');
+    console.error('OpenAI request failed for fixture', job.candidate.fixtureId, error);
+    return null;
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (e) {
+    console.error('JSON parse error for fixture', job.candidate.fixtureId, e);
+    return null;
+  }
+
+  if (!parsed.pick || typeof parsed.confidence !== 'number') return null;
+  if (parsed.pick === 'SKIP') return null;
+  if (parsed.confidence < 62) return null;
+
+  return {
+    fixtureId: job.candidate.fixtureId,
+    leagueId: job.candidate.leagueId,
+    league: job.candidate.league,
+    country: job.candidate.country,
+    homeTeam: job.candidate.homeTeam,
+    awayTeam: job.candidate.awayTeam,
+    market: job.market.type,
+    odd: job.market.odd,
+    confidence: parsed.confidence,
+    reasoning: parsed.reasoning ?? '',
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 async function main() {
@@ -180,15 +188,7 @@ async function main() {
 
     const predictions = [];
     for (let i = 0; i < marketJobs.length; i += MAX_CONCURRENT) {
-      const batch = marketJobs.slice(i, i + MAX_CONCURRENT).map(async ({ candidate }) => {
-        try {
-          return await generatePrediction(candidate);
-        } catch (error) {
-          console.warn(`Skipping match ${candidate.homeTeam} vs ${candidate.awayTeam}:`, error.message);
-          return null;
-        }
-      });
-
+      const batch = marketJobs.slice(i, i + MAX_CONCURRENT).map(processMarketJob);
       const results = await Promise.allSettled(batch);
       results.forEach((result) => {
         if (result.status === 'fulfilled' && result.value) {
@@ -199,8 +199,10 @@ async function main() {
       });
     }
 
-    await fs.writeFile(OUTPUT_PATH, JSON.stringify(predictions, null, 2), 'utf-8');
-    console.log(`Saved ${predictions.length} predictions to ${OUTPUT_PATH}`);
+    const sortedPredictions = predictions.filter(Boolean).sort((a, b) => b.confidence - a.confidence);
+
+    await fs.writeFile(OUTPUT_PATH, JSON.stringify(sortedPredictions, null, 2), 'utf-8');
+    console.log(`Saved ${sortedPredictions.length} predictions to ${OUTPUT_PATH}`);
   } catch (error) {
     console.error('Failed to generate predictions:', error.message);
     process.exit(1);
