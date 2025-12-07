@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "fetch:data": "node agents/fetch_data.js",
-    "generate:tips": "node agents/generate_tips.js"
+    "generate:tips": "node agents/generate_tips.js",
+    "update": "npm run fetch:data && npm run generate:tips"
   },
   "dependencies": {
     "axios": "^1.7.7",
