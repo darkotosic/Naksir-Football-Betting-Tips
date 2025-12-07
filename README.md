@@ -86,6 +86,13 @@ This will update `/data/predictions.json`. Open `index.html` to see the predicti
 3. Set source to `main` branch `/ (root)`
 4. Visit: `https://darkotosic.github.io/Naksir-Football-Betting-Tips/`
 
+### 🔁 Automated Updates via GitHub Actions
+
+The repository includes a scheduled GitHub Actions workflow that installs dependencies, runs `npm run fetch:data` and `npm run generate:tips`, and commits the updated `data/predictions.json` back to the repository. To enable it, add the following secrets in **Settings > Secrets and variables > Actions**:
+
+- `API_FOOTBALL_KEY`
+- `OPENAI_API_KEY`
+
 ---
 
 ## 🧠 Tech Stack
