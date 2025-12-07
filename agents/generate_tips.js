@@ -14,6 +14,61 @@ if (!API_KEY) {
 
 const openai = new OpenAI({ apiKey: API_KEY });
 
+function scoreOver15Candidate(match) {
+  const o = match.odds?.over15;
+  if (!o || !o.home) return null;
+  const odd = parseFloat(o.home);
+  if (!odd || odd < 1.1 || odd > 1.35) return null;
+  const base = 80 - (odd - 1.1) * 100; // linearna aproksimacija
+  return Math.max(0, Math.min(100, base));
+}
+
+function scoreBttsYesCandidate(match) {
+  const o = match.odds?.btts?.yes;
+  if (!o) return null;
+  const odd = parseFloat(o);
+  if (!odd || odd < 1.2 || odd > 1.6) return null;
+  const base = 75 - (odd - 1.2) * 80;
+  return Math.max(0, Math.min(100, base));
+}
+
+function buildCandidates(matches) {
+  const candidates = [];
+  for (const m of matches) {
+    const markets = [];
+    const scoreO15 = scoreOver15Candidate(m);
+    if (scoreO15 !== null && scoreO15 >= 62) {
+      markets.push({
+        type: 'OVER_1_5',
+        score: scoreO15,
+        odd: m.odds?.over15?.home ?? null,
+      });
+    }
+    const scoreBTTS = scoreBttsYesCandidate(m);
+    if (scoreBTTS !== null && scoreBTTS >= 62) {
+      markets.push({
+        type: 'BTTS_YES',
+        score: scoreBTTS,
+        odd: m.odds?.btts?.yes ?? null,
+      });
+    }
+    if (markets.length === 0) continue;
+    candidates.push({
+      fixtureId: m.fixtureId,
+      leagueId: m.leagueId,
+      league: m.league,
+      country: m.country,
+      homeTeam: m.homeTeam,
+      awayTeam: m.awayTeam,
+      kickOff: m.date,
+      date: m.date,
+      odds: m.odds,
+      markets,
+    });
+  }
+  return candidates;
+}
+
 async function loadMatches() {
   const raw = await fs.readFile(MATCHES_PATH, 'utf-8');
   const data = JSON.parse(raw);
@@ -107,27 +162,29 @@ async function main() {
       return;
     }
 
-    const validMatches = matches.filter((match) => {
-      const valid = isValidOdds(match);
-      if (!valid) {
-        console.warn(`Skipping match ${match.homeTeam} vs ${match.awayTeam}: missing or invalid odds.`);
+    const candidates = buildCandidates(matches);
+    const marketJobs = [];
+    for (const c of candidates) {
+      for (const m of c.markets) {
+        marketJobs.push({ candidate: c, market: m });
       }
-      return valid;
-    });
+    }
 
-    if (validMatches.length === 0) {
+    marketJobs.sort((a, b) => b.market.score - a.market.score);
+
+    if (marketJobs.length === 0) {
       await fs.writeFile(OUTPUT_PATH, '[]', 'utf-8');
-      console.warn('No valid matches to process after validation.');
+      console.warn('No candidates to process after rule-based scoring.');
       return;
     }
 
     const predictions = [];
-    for (let i = 0; i < validMatches.length; i += MAX_CONCURRENT) {
-      const batch = validMatches.slice(i, i + MAX_CONCURRENT).map(async (match) => {
+    for (let i = 0; i < marketJobs.length; i += MAX_CONCURRENT) {
+      const batch = marketJobs.slice(i, i + MAX_CONCURRENT).map(async ({ candidate }) => {
         try {
-          return await generatePrediction(match);
+          return await generatePrediction(candidate);
         } catch (error) {
-          console.warn(`Skipping match ${match.homeTeam} vs ${match.awayTeam}:`, error.message);
+          console.warn(`Skipping match ${candidate.homeTeam} vs ${candidate.awayTeam}:`, error.message);
           return null;
         }
       });
