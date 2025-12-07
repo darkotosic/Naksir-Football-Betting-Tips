@@ -5,7 +5,10 @@
     "fetch:data": "node agents/fetch_data.js",
     "generate:tips": "node agents/generate_tips.js",
     "update": "npm run fetch:data && npm run generate:tips",
-    "evaluate": "node agents/evaluate_results.js"
+    "evaluate": "node agents/evaluate_results.js",
+    "ingest:auto": "node core/ingest/full_auto_ingest.js",
+    "tickets": "node outputs/generateTickets.js",
+    "evaluate:new": "node cron_jobs/evaluate.js"
   },
   "dependencies": {
     "axios": "^1.7.7",
