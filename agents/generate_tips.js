@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 const MATCHES_PATH = path.join(__dirname, '..', 'data', 'matches.json');
 const OUTPUT_PATH = path.join(__dirname, '..', 'data', 'predictions.json');
 const API_KEY = process.env.OPENAI_API_KEY;
+const MAX_CONCURRENT = 3;
 
 if (!API_KEY) {
   console.error('Missing OPENAI_API_KEY environment variable.');
@@ -22,6 +23,17 @@ async function loadMatches() {
   return data;
 }
 
+function isValidOdds(match) {
+  const odds = match?.odds;
+  if (!odds) return false;
+
+  const values = ['home', 'draw', 'away'];
+  return values.every((key) => {
+    const value = odds[key];
+    return typeof value === 'number' && Number.isFinite(value);
+  });
+}
+
 function buildPrompt(match) {
   const homeOdd = match.odds?.home ?? 'N/A';
   const drawOdd = match.odds?.draw ?? 'N/A';
@@ -32,6 +44,20 @@ function buildPrompt(match) {
     'Will both teams score? Over 2.5 goals? Respond with JSON only:',
     '{"outcome": "HomeWin|Draw|AwayWin", "btts": true, "over25": true, "confidence": 84, "reason": "..."}',
   ].join('\n');
+}
+
+function buildDefaultPrediction(match, reason) {
+  return {
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    date: match.date,
+    odds: match.odds,
+    outcome: 'Unknown',
+    btts: false,
+    over25: false,
+    confidence: 0,
+    reason,
+  };
 }
 
 async function generatePrediction(match) {
@@ -50,6 +76,9 @@ async function generatePrediction(match) {
 
   const content = completion.choices?.[0]?.message?.content?.trim();
   try {
+    if (!content) {
+      return buildDefaultPrediction(match, 'Model response was empty.');
+    }
     const parsed = JSON.parse(content);
     return {
       homeTeam: match.homeTeam,
@@ -63,18 +92,10 @@ async function generatePrediction(match) {
       reason: parsed.reason,
     };
   } catch (error) {
-    console.warn('Could not parse model response, falling back to defaults.', content);
-    return {
-      homeTeam: match.homeTeam,
-      awayTeam: match.awayTeam,
-      date: match.date,
-      odds: match.odds,
-      outcome: 'HomeWin',
-      btts: false,
-      over25: false,
-      confidence: 50,
-      reason: 'Model response could not be parsed.',
-    };
+    console.warn(
+      `Could not parse model response for ${match.homeTeam} vs ${match.awayTeam}: ${error.message}. Content: ${content}`
+    );
+    return buildDefaultPrediction(match, 'Model response could not be parsed.');
   }
 }
 
@@ -86,14 +107,39 @@ async function main() {
       return;
     }
 
-    const predictions = [];
-    for (const match of matches) {
-      try {
-        const prediction = await generatePrediction(match);
-        predictions.push(prediction);
-      } catch (error) {
-        console.warn(`Skipping match ${match.homeTeam} vs ${match.awayTeam}:`, error.message);
+    const validMatches = matches.filter((match) => {
+      const valid = isValidOdds(match);
+      if (!valid) {
+        console.warn(`Skipping match ${match.homeTeam} vs ${match.awayTeam}: missing or invalid odds.`);
       }
+      return valid;
+    });
+
+    if (validMatches.length === 0) {
+      await fs.writeFile(OUTPUT_PATH, '[]', 'utf-8');
+      console.warn('No valid matches to process after validation.');
+      return;
+    }
+
+    const predictions = [];
+    for (let i = 0; i < validMatches.length; i += MAX_CONCURRENT) {
+      const batch = validMatches.slice(i, i + MAX_CONCURRENT).map(async (match) => {
+        try {
+          return await generatePrediction(match);
+        } catch (error) {
+          console.warn(`Skipping match ${match.homeTeam} vs ${match.awayTeam}:`, error.message);
+          return null;
+        }
+      });
+
+      const results = await Promise.allSettled(batch);
+      results.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value) {
+          predictions.push(result.value);
+        } else if (result.status === 'rejected') {
+          console.warn('Prediction batch item rejected:', result.reason?.message || result.reason);
+        }
+      });
     }
 
     await fs.writeFile(OUTPUT_PATH, JSON.stringify(predictions, null, 2), 'utf-8');

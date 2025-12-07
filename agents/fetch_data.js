@@ -18,6 +18,33 @@ const client = axios.create({
   timeout: 15000,
 });
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withRetry(fn, { retries = 2, baseDelay = 500 } = {}) {
+  let attempt = 0;
+  let lastError;
+
+  while (attempt <= retries) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) break;
+
+      const delay = baseDelay * (attempt + 1);
+      console.warn(
+        `Request failed (attempt ${attempt + 1}/${retries + 1}): ${error.message}. Retrying in ${delay}ms.`
+      );
+      await wait(delay);
+      attempt += 1;
+    }
+  }
+
+  throw lastError;
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -33,6 +60,8 @@ function mapFixture(fixture) {
   return {
     fixtureId: fixture.fixture.id,
     date: fixture.fixture.date,
+    status: fixture.fixture.status?.short || null,
+    leagueId: fixture.league.id,
     league: fixture.league.name,
     country: fixture.league.country,
     homeTeam: fixture.teams.home.name,
@@ -59,19 +88,23 @@ function extractMatchOdds(oddsResponse) {
 }
 
 async function fetchFixtures(date) {
-  const { data } = await client.get('/fixtures', {
-    params: {
-      date,
-      timezone: 'UTC',
-    },
-  });
+  const { data } = await withRetry(() =>
+    client.get('/fixtures', {
+      params: {
+        date,
+        timezone: 'UTC',
+      },
+    })
+  );
   return data?.response || [];
 }
 
 async function fetchOddsForFixture(fixtureId) {
-  const { data } = await client.get('/odds', {
-    params: { fixture: fixtureId },
-  });
+  const { data } = await withRetry(() =>
+    client.get('/odds', {
+      params: { fixture: fixtureId },
+    })
+  );
   return data?.response?.[0] || null;
 }
 
@@ -87,6 +120,9 @@ async function main() {
         try {
           const oddsResponse = await fetchOddsForFixture(match.fixtureId);
           const odds = extractMatchOdds(oddsResponse);
+          if (!odds) {
+            console.warn(`No odds found for fixture ${match.fixtureId}. Keeping odds as null.`);
+          }
           return { ...match, odds };
         } catch (error) {
           console.warn(`Odds fetch failed for fixture ${match.fixtureId}:`, error.message);
