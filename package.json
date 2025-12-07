@@ -1,0 +1,13 @@
+{
+  "name": "naksir-football-betting-tips",
+  "version": "1.0.0",
+  "scripts": {
+    "fetch:data": "node agents/fetch_data.js",
+    "generate:tips": "node agents/generate_tips.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "openai": "^4.78.0"
+  }
+}
