@@ -52,10 +52,31 @@ function createOddsSection(odds) {
 
 function createPredictionCard(prediction) {
   const card = document.createElement('article');
-  card.className = 'card';
+
+  const confidenceValue = Number.parseFloat(prediction.confidence) || 0;
+  const confidenceClass =
+    confidenceValue >= 80 ? 'confidence-high' : confidenceValue >= 70 ? 'confidence-medium' : 'confidence-low';
+
+  card.className = `card prediction-card ${confidenceClass}`;
+
+  const leagueLabel = prediction.league && prediction.country
+    ? `${prediction.league} (${prediction.country})`
+    : prediction.league || prediction.country || 'Nepoznata liga';
 
   const header = document.createElement('div');
   header.className = 'card__header';
+
+  const league = document.createElement('div');
+  league.className = 'prediction-header';
+  league.textContent = leagueLabel;
+  header.appendChild(league);
+
+  if (confidenceValue >= 80) {
+    const premiumBadge = document.createElement('span');
+    premiumBadge.className = 'prediction-badge-premium';
+    premiumBadge.textContent = 'Premium tip';
+    header.appendChild(premiumBadge);
+  }
 
   const matchup = document.createElement('div');
   matchup.className = 'matchup';
@@ -65,16 +86,27 @@ function createPredictionCard(prediction) {
   kickoff.className = 'kickoff';
   kickoff.textContent = prediction.date || 'TBD';
 
-  header.appendChild(matchup);
-  header.appendChild(kickoff);
+  const marketText = prediction.market || prediction.tip || prediction.outcome || 'Tip nedostaje';
+
+  const market = document.createElement('div');
+  market.className = 'prediction-market';
+  market.textContent = `Tip: ${marketText}`;
 
   const metaRow = document.createElement('div');
   metaRow.className = 'card__meta';
 
-  const badge = document.createElement('div');
-  badge.className = 'badge';
-  badge.textContent = `Confidence ${prediction.confidence}%`;
-  metaRow.appendChild(badge);
+  const oddValue = prediction.odd ?? prediction.odds?.value ?? prediction.odds?.odd ?? null;
+  if (oddValue) {
+    const oddPill = document.createElement('div');
+    oddPill.className = 'pill';
+    oddPill.innerHTML = `<span class="label">Kvota</span><span>${oddValue}</span>`;
+    metaRow.appendChild(oddPill);
+  }
+
+  const confidencePill = document.createElement('div');
+  confidencePill.className = 'pill';
+  confidencePill.innerHTML = `<span class="label">Confidence</span><span>${confidenceValue}%</span>`;
+  metaRow.appendChild(confidencePill);
 
   const formattedTimestamp = formatTimestamp(prediction.updatedAt || prediction.timestamp);
   if (formattedTimestamp) {
@@ -84,23 +116,26 @@ function createPredictionCard(prediction) {
     metaRow.appendChild(timestampBadge);
   }
 
-  const oddsRow = document.createElement('div');
-  oddsRow.className = 'predictions';
-  oddsRow.innerHTML = `
-    <div class="pill"><span class="label">Prediction</span><span>${prediction.outcome}</span></div>
-    <div class="pill"><span class="label">BTTS</span><span>${prediction.btts ? 'Yes' : 'No'}</span></div>
-    <div class="pill"><span class="label">Over 2.5</span><span>${prediction.over25 ? 'Yes' : 'No'}</span></div>
-  `;
+  const confidenceBarWrapper = document.createElement('div');
+  confidenceBarWrapper.className = `confidence-bar-wrapper ${confidenceClass}`;
+  const confidenceBarFill = document.createElement('div');
+  confidenceBarFill.className = 'confidence-bar-fill';
+  const barWidth = Math.max(0, Math.min(confidenceValue, 100));
+  confidenceBarFill.style.width = `${barWidth}%`;
+  confidenceBarWrapper.appendChild(confidenceBarFill);
 
   const oddsSection = createOddsSection(prediction.odds);
 
   const reason = document.createElement('p');
-  reason.className = 'reason';
-  reason.textContent = prediction.reason;
+  reason.className = 'prediction-reasoning';
+  reason.textContent = prediction.reasoning || prediction.reason || 'Nema obrazloženja.';
 
   card.appendChild(header);
+  card.appendChild(matchup);
+  card.appendChild(kickoff);
+  card.appendChild(market);
   card.appendChild(metaRow);
-  card.appendChild(oddsRow);
+  card.appendChild(confidenceBarWrapper);
   if (oddsSection) card.appendChild(oddsSection);
   card.appendChild(reason);
 

@@ -171,7 +171,7 @@ button:active {
   gap: 8px;
 }
 
-.predictions .pill {
+.pill {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
   padding: 10px 12px;
@@ -182,7 +182,11 @@ button:active {
   color: var(--text);
 }
 
-.predictions .label {
+.predictions .pill {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.label {
   color: var(--muted);
   font-size: 13px;
 }
@@ -253,6 +257,62 @@ button:active {
 
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.prediction-card {
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
+
+.prediction-header {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.prediction-market {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.confidence-bar-wrapper {
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.confidence-bar-fill {
+  height: 6px;
+  width: 0;
+  transition: width 0.3s ease;
+}
+
+.confidence-high .confidence-bar-fill {
+  background: #16a34a;
+}
+
+.confidence-medium .confidence-bar-fill {
+  background: #eab308;
+}
+
+.confidence-low .confidence-bar-fill {
+  background: #dc2626;
+}
+
+.prediction-reasoning {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.prediction-badge-premium {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 @media (max-width: 640px) {
