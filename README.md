@@ -66,13 +66,26 @@ export API_FOOTBALL_KEY=your_api_key_here
 export OPENAI_API_KEY=your_openai_key_here
 ```
 
+### 4. Install Dependencies
+
+```bash
+npm install
+```
+
+### 5. Run Agents
+
+```bash
+npm run fetch:data      # Step 1: Fetch fixtures & odds
+npm run generate:tips   # Step 2: Generate predictions using OpenAI
+```
+
 ---
 
 ## 🛠️ Generate Daily Predictions
 
 ```bash
-node agents/fetch_data.js      # Step 1: Fetch fixtures & odds
-node agents/generate_tips.js   # Step 2: Generate predictions using OpenAI
+npm run fetch:data      # Step 1: Fetch fixtures & odds
+npm run generate:tips   # Step 2: Generate predictions using OpenAI
 ```
 
 This will update `/data/predictions.json`. Open `index.html` to see the predictions or push to GitHub for deployment.
