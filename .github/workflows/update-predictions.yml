@@ -2,7 +2,7 @@ name: Update Predictions
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 5 * * *" # 06:00 Europe/Belgrade (UTC+1/UTC+2)
   workflow_dispatch:
 
 permissions:
@@ -17,11 +17,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.x
 
       - name: Install dependencies
         run: npm install
@@ -32,16 +34,19 @@ jobs:
       - name: Generate predictions
         run: npm run generate:tips
 
-      - name: Commit and push predictions
+      - name: Commit and push updates
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/predictions.json
+          git add data/matches.json data/predictions.json
+          if [ -d "data/cache" ]; then
+            git add data/cache
+          fi
           if git diff --cached --quiet; then
             echo "No changes to commit"
-          else
-            git commit -m "chore: update predictions"
-            git push
+            exit 0
           fi
+          git commit -m "chore: update matches and predictions"
+          git push
