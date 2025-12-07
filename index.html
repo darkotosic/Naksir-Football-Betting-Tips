@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚽ Naksir Football Betting Tips</title>
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero__content">
+      <p class="eyebrow">Daily AI-powered picks</p>
+      <h1>⚽ Naksir Football Betting Tips</h1>
+      <p class="subtitle">Svež izbor utakmica, kvota i AI reasoning na jednom mestu.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel__header">
+        <div>
+          <h2>Prognoze za danas</h2>
+          <p class="muted">Automatski preuzete prognoze iz <code>data/predictions.json</code>.</p>
+        </div>
+        <button id="refresh" type="button">Osveži prognoze</button>
+      </div>
+      <div id="predictions" class="grid" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Podaci i prognoze su edukativnog karaktera. Koristi odgovorno.</p>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

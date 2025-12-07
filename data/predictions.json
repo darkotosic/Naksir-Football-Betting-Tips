@@ -1,0 +1,12 @@
+[
+  {
+    "homeTeam": "Arsenal",
+    "awayTeam": "Tottenham",
+    "date": "Today",
+    "outcome": "HomeWin",
+    "btts": true,
+    "over25": true,
+    "confidence": 87,
+    "reason": "Arsenal u odličnoj formi, dominantni na Emiratesu, Spursi imaju problema u defanzivi i rotiraju ključne igrače."
+  }
+]
